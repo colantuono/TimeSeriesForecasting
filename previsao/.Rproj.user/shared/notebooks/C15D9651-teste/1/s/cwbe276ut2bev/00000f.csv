@@ -1,0 +1,7 @@
+"0","# mean(abs((data$actual-data$forecast)/data$actual)) * 100
+mean(abs((realizado_oos-pred_oos_t_s)/ realizado_oos)) * 100
+"
+"1","[1]"
+"1"," 48.41328"
+"1","
+"

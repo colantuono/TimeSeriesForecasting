@@ -1,0 +1,5 @@
+"0",""
+"0","dates <- seq(as.Date(min(fat$dta_inc_pedido)), length=length((fat$dta_inc_pedido)), by=""days"")"
+"0","remainder_ts <- xts(x=remainder, order.by = dates)"
+"0",""
+"0",""

@@ -1,0 +1,5 @@
+"0",""
+"0","full_ts <- ts( c(training, testing), start = start(training),  frequency = frequency(training) )"
+"0",""
+"0",""
+"0","pred_oot <- sarima.for(full_ts, n.ahead=length(oof_ts), p=p, d=d, q=q,     0,1,1,7,     plot.all=F)"

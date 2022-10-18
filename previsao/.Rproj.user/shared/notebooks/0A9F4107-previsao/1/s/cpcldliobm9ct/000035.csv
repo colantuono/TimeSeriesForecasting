@@ -1,0 +1,4 @@
+"0",""
+"0","## checando estacionaridade"
+"0","ddf <- diff(fat_full_timeseries_df$fat)"
+"0","ts.plot(fat_full_timeseries_df$fat, xlab = ""Day"", ylab = ""Incremental Revenue"", main = ""Daily Revenue"")"
