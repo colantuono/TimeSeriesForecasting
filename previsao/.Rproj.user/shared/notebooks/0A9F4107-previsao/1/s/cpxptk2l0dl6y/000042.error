@@ -1,1 +1,0 @@
-{"frames":[{"func":"stl(units)","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0},{"func":"stop(\"series is not periodic or has less than two periods\")","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0}],"message":"Error in stl(units) : series is not periodic or has less than two periods\n"}

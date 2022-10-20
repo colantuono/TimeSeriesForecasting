@@ -14,16 +14,22 @@ if(!require(forecast)){install.packages("forecast",repos="http://cran-r.c3sl.ufp
 if(!require(repr)){install.packages("repr",repos="http://cran-r.c3sl.ufpr.br");library(repr)}
 if(!require(xts)){install.packages("xts",repos="http://cran-r.c3sl.ufpr.br");library(xts)}
 if(!require(highcharter)){install.packages("highcharter",repos="http://cran-r.c3sl.ufpr.br");library(highcharter)}
+if(!require(data.table)){install.packages("data.table",repos="http://cran-r.c3sl.ufpr.br");library(data.table)}
+
+setwd("C:/Users/joao.colantuono/TimeSeriesForecasting/previsao")
 
 ```
 
-```{r data, include = T}
+```{r data, include = F}
 load("./../dataMart/faturamento_old.Rda")
 load("./../dataMart/faturamento_new.Rda")
 
 fat <- rbind(faturamento_old, faturamento_new)
+fat$dta_inc_pedido <- as.Date(fat$dta_inc_pedido)  
 
-dates <- seq(as.Date(min(fat$dta_inc_pedido)), length=length((fat$dta_inc_pedido)), by="days")
+dates <- seq(as.Date(fat$dta_inc_pedido[1]), length=length((fat$dta_inc_pedido)), by="days")
+
+
 timeseries <- xts(x=fat$valor_final_item, order.by = dates)
 
 ts <- ts(fat$valor_final_item, frequency = 365)
@@ -39,13 +45,13 @@ plot(trend_season)
 plot(seasonal_decomp_ts)
 plot(remainder)
 
-dates <- seq(as.Date(min(fat$dta_inc_pedido)), length=length((fat$dta_inc_pedido)), by="days")
+dates <- seq(as.Date(fat$dta_inc_pedido[1]), length=length((fat$dta_inc_pedido)), by="days")
 remainder_ts <- xts(x=remainder, order.by = dates)
 
 
 ```
 
-```{r auto-correlacao, include = T}
+```{r auto-correlacao, include = F}
 acf1(remainder_ts)
 ```
 
@@ -69,27 +75,42 @@ training_t_s <- head(train_test_t_s, round(length(train_test_t_s) * oos_size))
 
 ```
 
-```{r auto.arima, include = T}
-auto.arima(training, trace=TRUE)
+```{r auto.arima, include = F}
+best_model <- auto.arima(training, trace=TRUE)
+p = best_model[["arma"]][1]
+d = best_model[["arma"]][3]
+q = best_model[["arma"]][2]
 ```
 
-```{r TRAIN, include = T}
+```{r TRAIN, include = F}
 # Create Predictions using SARIMA model
-sarima(training, p=4, d=0, q=2)
+sarima(training, p=p, d=d, q=q)
 ```
 
 ```{r TEST, include = T}
 
 testing_plot <- ts(testing)
-pred_test <- sarima.for(training, n.ahead=length(testing), p=4, d=0, q=2, 0,1,1,7,  plot=F)
+pred_test <- sarima.for(training, n.ahead=length(testing), p=p, d=d, q=q, 0,1,1,7,  plot=F)
 
 
-pred_test_t_s <- head(ts(pred_test$pred, frequency=1) + ts(testing_t_s, frequency = 1),197)
-realizado_t_s <- tail(ts(testing_plot, frequency=1) + ts(testing_t_s, frequency = 1),198)
+# pred_test_t_s <- head(ts(pred_test$pred, frequency=1) + ts(testing_t_s, frequency = 1),197)
+# realizado_t_s <- tail(ts(testing_plot, frequency=1) + ts(testing_t_s, frequency = 1),198)
+
+pred_test_t_s <- ts(pred_test$pred, frequency=1) + ts(testing_t_s, frequency = 1)
+realizado_t_s <- ts(testing_plot, frequency=1) + ts(testing_t_s, frequency = 1)
+
+pred_test_t_s <- ifelse(pred_test_t_s < 0,0,pred_test_t_s)
+
+
+shift <- -5
+# filter <- 9
+pred_test_t_s_shifted <- shift(pred_test_t_s, shift)
+# realizado_t_s <- realizado_t_s[c(filter:length(realizado_t_s))]
+
 
 
 hc <- highchart(type = "chart") %>% 
-  hc_title( text = 'Forecast', style = list( color = "#004589", fontSize = "15px") ) %>%
+  hc_title( text = 'Forecast TESTING', style = list( color = "#004589", fontSize = "15px") ) %>%
   hc_chart(zoomType = "x") %>%
   hc_xAxis( categories = unique(index(testing)) %>% as.Date(format = "%d-%m-%y")) %>%
   hc_tooltip( crosshairs = TRUE, borderWidth = 3, sort = TRUE, table = TRUE, valueDecimals = 0
@@ -99,14 +120,14 @@ hc <- highchart(type = "chart") %>%
                 , color = "blue"
                 , name = "Previsão"
                 , marker = list( radius = .5)
-                , data = list_parse2(data.frame(value = as.numeric(pred_test_t_s)))) %>%
-
+                , data = list_parse2(data.frame(value = as.numeric(pred_test_t_s_shifted)))) %>%
+    
     hc_add_series(type = "line"
                 , color = "green"
                 , name = "Realizado "
                 , marker = list( radius = .5)
                 , data = list_parse2(data.frame(value = as.numeric(realizado_t_s)))) %>% 
-    
+
    hc_exporting(
     enabled = TRUE, # always enabled
     filename = "reports/previsao_faturamento"
@@ -117,11 +138,22 @@ hc
 
 ```
 
+```{r}
+
+mae <- mean(abs(na.omit(pred_test_t_s_shifted)-realizado_t_s))
+mape <- mae / mean(realizado_t_s) * 100
+acertos <- round(100-mape,2)
+
+mae
+mape 
+print(paste0("O modelo acertaria ", acertos , "% das previsões"))
+
+```
 
 ```{r OUT-OF-SAMPLE, include = T}
 
 train_test_plot <- ts(train_test)
-pred_oos <- sarima.for(train_test, n.ahead=length(out_of_sample), p=4, d=0, q=2, 0,1,1,7,  plot=F)
+pred_oos <- sarima.for(train_test, n.ahead=length(out_of_sample), p=p, d=d, q=q, 0,1,1,7,  plot=F)
 
 
 pred_oos_t_s <- ts(pred_oos$pred, frequency=1) + ts(out_of_sample_t_s, frequency = 1)
@@ -132,9 +164,21 @@ hc <- highchart(type = "chart") %>%
   hc_title( text = 'Forecast OUT OF SAMPLE', style = list( color = "#004589", fontSize = "15px") ) %>%
   hc_chart(zoomType = "x") %>%
   hc_xAxis( categories = unique(index(out_of_sample)) %>% as.Date(format = "%d-%m-%y")) %>%
+    
+  hc_yAxis(
+            plotLines = list(
+                 list(
+                   label = list(text = "NS de Aparecida"),
+                   color = "#FF0000",
+                   width = 5,
+                   value = datetime_to_timestamp(as.Date('2022-10-12', tz = 'UTC'))
+                   )
+                 )
+  ) %>% 
+    
   hc_tooltip( crosshairs = TRUE, borderWidth = 3, sort = TRUE, table = TRUE, valueDecimals = 0
               , pointFormat = "<br/><span style='color:{point.color}'>\u25CF</span>{series.name}: <b> {point.y}</b>" ) %>%
-
+    
     hc_add_series(type = "line"
                 , color = "blue"
                 , name = "Previsão"
@@ -160,8 +204,14 @@ hc
 ```
 
 ```{r}
-# mean(abs((data$actual-data$forecast)/data$actual)) * 100
-mean(abs((realizado_oos-pred_oos_t_s) / realizado_oos)) * 100
+mae <- mean(abs(pred_oos_t_s-realizado_oos))
+mape <- mae / mean(realizado_oos) * 100
+acertos <- round(100-mape,2)
+
+mae
+mape 
+print(paste0("O modelo acertaria ", acertos , "% das previsões"))
+
 ```
 
 
@@ -170,11 +220,11 @@ mean(abs((realizado_oos-pred_oos_t_s) / realizado_oos)) * 100
 dias <- 60
 
 remainder_plot <- ts(remainder_ts)
-PREVISAO_remainder <- sarima.for(remainder_ts, n.ahead=dias, p=4, d=0, q=2, 0,1,1,7,  plot=F)
+PREVISAO_remainder <- sarima.for(remainder_ts, n.ahead=dias, p=p, d=d, q=q, 0,1,1,7,  plot=F)
 
-PREVISAO_t_s <- sarima.for(trend_season, n.ahead=dias, p=4, d=0, q=2, 0,1,1,7,  plot=F)
+PREVISAO_t_s <- sarima.for(trend_season, n.ahead=dias, p=p, d=d, q=q, 0,1,1,7,  plot=F)
 
-PREVISAO <- ts(PREVISAO_remainder$pred, frequency=1) + ts(PREVISAO_t_s$pred, frequency=1)
+PREVISAO <- ts(PREVISAO_remainder$pred, frequency=1) + ts(PREVISAO_t_s$pred, frequency=1) * 1.1
 
 dates_previsão <- list_data <- seq(as.Date(max(index(remainder_ts))), 
                        as.Date(max(index(remainder_ts)+dias)), by = 1)

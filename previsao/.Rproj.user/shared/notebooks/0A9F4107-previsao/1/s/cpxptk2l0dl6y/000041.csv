@@ -1,7 +1,0 @@
-"0","z <- as.Date(fat_full_timeseries_df$dta_inc_pedido)"
-"0",""
-"0","units <- ts(fat_full_timeseries_df$fat)"
-"0",""
-"0","decomp <- stl(units)"
-"2","Error in stl(units) : series is not periodic or has less than two periods
-"
