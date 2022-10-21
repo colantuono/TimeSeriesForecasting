@@ -3,7 +3,15 @@ title: "weekly timeseries"
 ---
 
 ```{r setup, include=FALSE, echo = FALSE}
-knitr::opts_chunk$set( echo = FALSE, fig.align = 'center', out.width= '100%', out.height= '100%', dpi= 1000, fig.width= 12, fig.height= 6, warning = FALSE, include = FALSE )
+knitr::opts_chunk$set( echo = FALSE
+                       , fig.align = 'center'
+                       , out.width= '100%'
+                       , out.height= '100%'
+                       , dpi= 1000
+                       , fig.width= 12
+                       , fig.height= 6
+                       , warning = FALSE
+                       , include = FALSE )
 ```
 
 ```{r packages}
@@ -16,15 +24,11 @@ if(!require(repr)){install.packages("repr",repos="http://cran-r.c3sl.ufpr.br");l
 if(!require(xts)){install.packages("xts",repos="http://cran-r.c3sl.ufpr.br");library(xts)}
 if(!require(highcharter)){install.packages("highcharter",repos="http://cran-r.c3sl.ufpr.br");library(highcharter)}
 if(!require(data.table)){install.packages("data.table",repos="http://cran-r.c3sl.ufpr.br");library(data.table)}
-
-
-# setwd("C:/Users/joao.colantuono/TimeSeriesForecasting/previsao")
-
-# set.seed(1)
+if(!require(dplyr)){install.packages("dplyr",repos="http://cran-r.c3sl.ufpr.br");library(dplyr)}
 
 ```
 
-```{r data, include = F}
+```{r data}
 
 load("./../dataMart/faturamento_old.Rda")
 load("./../dataMart/faturamento_new.Rda")
@@ -63,13 +67,37 @@ dates <- tail(dates , -1)
 
 remainder_ts <- remainder
 
-# remainder_ts <- xts(x=remainder, order.by = dates)
-# remainder_ts <- na.remove(remainder_ts)
+```
 
+```{r}
+hc <- highchart(type = "chart") %>% 
+  hc_title( text = paste0('Faturamento Passado')
+            , style = list( color = "#004589", fontSize = "15px") ) %>%
+  hc_chart(zoomType = "x") %>%
+  hc_xAxis(categories = unique(fat$date) %>% as.Date(format = "%d-%m-%y"))  %>%
+  hc_tooltip( crosshairs = TRUE, borderWidth = 3, sort = TRUE, table = TRUE, valueDecimals = 0
+              , pointFormat = "<br/><span style='color:{point.color}'>\u25CF</span>{series.name}: <b> {point.y}</b>" ) %>%
+
+
+    hc_add_series(type = "line"
+                , color = "blue"
+                , name = "Faturamento"
+                , marker = list( radius = .5)
+                , data = list_parse2(data.frame( value = as.numeric(fat$valor_final_item)))) %>%
+
+   hc_exporting(
+    enabled = TRUE, # always enabled
+    filename = "reports/previsao_faturamento"
+  ) %>% 
+  hc_add_theme(hc_theme_gridlight())
+
+hc
 ```
 
 
-```{r data-split, include=F}
+
+
+```{r data-split}
 
 size <- 20
 
@@ -102,7 +130,7 @@ q
 best_model
 ```
 
-```{r TRAIN, include = F}
+```{r TRAIN}
 # Create Predictions using SARIMA model
 sarima(train_test, p=p, d=d, q=q)
 ```
@@ -125,7 +153,7 @@ acertos <- round(100-mape,2)
 
 mae
 mape 
-print(paste0("o 'ERRO MÉDIO' do esperado é de: ",  round(mae)  ))
+print(paste0("o 'ERRO MÉDIO' esperado é de: ",  round(mae)  ))
 
 
 ```
@@ -179,7 +207,7 @@ acertos <- round(100-mape,2)
 
 mae
 mape 
-print(paste0("o 'ERRO MÉDIO' do esperado é de: ",  round(mae)  ))
+print(paste0("o 'ERRO MÉDIO' esperado é de: ",  round(mae)  ))
 
 ```
 
@@ -221,12 +249,12 @@ hc
 ```{r PREVISAO, include = T}
 
 semanas <- 52
-date_previsao = as.Date(seq.Date(max(fat$date)+14, by = 7, length.out = semanas))
+date_previsao = as.Date(seq.Date(max(fat$date)+7, by = 7, length.out = semanas))
 
 remainder_plot <- ts(remainder_ts)
 PREVISAO_remainder <- sarima.for(remainder_ts, n.ahead=semanas, p=p, d=d, q=q, 0,1,1,52,  plot=F)
 
-PREVISAO_t_s <- sarima.for(trend_season, n.ahead=semanas, p=p, d=d, q=q, 0,1,1,1,  plot=F)
+PREVISAO_t_s <- sarima.for(trend_season, n.ahead=semanas, p=p, d=d, q=q, 0,1,1,7,  plot=F)
 
 PREVISAO <- ts(PREVISAO_remainder$pred, frequency=52) + ts(PREVISAO_t_s$pred, frequency=52) #* 1.1
 
@@ -259,6 +287,43 @@ hc
 ```
 
 
+```{r, include=T}
+
+total_fat <-  c(fat$valor_final_item, PREVISAO)
+
+total_dates <- as.Date(seq.Date(min(fat$date), by = 7, length.out = length(total_fat)))
+
+hc <- highchart(type = "chart") %>% 
+  hc_title( text = paste0('PREVISÃO PRÓXIMAS ', semanas,' SEMANAS')
+            , style = list( color = "#004589", fontSize = "15px") ) %>%
+  hc_chart(zoomType = "x") %>%
+  hc_xAxis(categories = unique(total_dates) %>% as.Date(format = "%d-%m-%y"),
+           plotLines = list(
+      list(
+        label = list(text = "Previsão"),
+        color = "#FF0000",
+        width = 1,
+        value = length(fat$date)
+        )
+      )
+           
+           )  %>%
+  hc_tooltip( crosshairs = TRUE, borderWidth = 3, sort = TRUE, table = TRUE, valueDecimals = 0
+              , pointFormat = "<br/><span style='color:{point.color}'>\u25CF</span>{series.name}: <b> {point.y}</b>" ) %>%
 
 
+    hc_add_series(type = "line"
+                , color = "blue"
+                , name = "Previsão"
+                , marker = list( radius = .5)
+                , data = list_parse2(data.frame( value = as.numeric(total_fat)))) %>%
 
+   hc_exporting(
+    enabled = TRUE, # always enabled
+    filename = "reports/previsao_faturamento"
+  ) %>% 
+  hc_add_theme(hc_theme_gridlight())
+
+hc
+
+```
