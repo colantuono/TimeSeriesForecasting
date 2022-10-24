@@ -1,17 +1,9 @@
 ---
-title: "weekly timeseries"
+title: "Previsão de Faturamento por Semana"
 ---
 
 ```{r setup, include=FALSE, echo = FALSE}
-knitr::opts_chunk$set( echo = FALSE
-                       , fig.align = 'center'
-                       , out.width= '100%'
-                       , out.height= '100%'
-                       , dpi= 1000
-                       , fig.width= 12
-                       , fig.height= 6
-                       , warning = FALSE
-                       , include = FALSE )
+knitr::opts_chunk$set( echo = FALSE, fig.align = 'center', out.width= '100%', out.height= '100%', dpi= 1000, fig.width= 12, fig.height= 6, warning = FALSE, include = FALSE )
 ```
 
 ```{r packages}
@@ -59,9 +51,9 @@ trend_decomp_ts     <- decomp_ts$trend
 season_decomp_ts <- decomp_ts$seasonal 
 random_decomp_ts <- decomp_ts$random
 
-trend_season <-  season_decomp_ts + (random_decomp_ts[is.na(random_decomp_ts)] <- 0) + (trend_decomp_ts[is.na(trend_decomp_ts)] <- 0)
+trend_season <-  season_decomp_ts + (trend_decomp_ts[is.na(trend_decomp_ts)] <- 0) #+ (random_decomp_ts[is.na(random_decomp_ts)] <- 0)
 
-remainder <- decomp_ts$x 
+remainder <- decomp_ts$x
 
 dates <- tail(dates , -1)
 
@@ -69,7 +61,7 @@ remainder_ts <- remainder
 
 ```
 
-```{r}
+```{r Faturamento}
 hc <- highchart(type = "chart") %>% 
   hc_title( text = paste0('Faturamento Passado')
             , style = list( color = "#004589", fontSize = "15px") ) %>%
@@ -94,9 +86,6 @@ hc <- highchart(type = "chart") %>%
 hc
 ```
 
-
-
-
 ```{r data-split}
 
 size <- 20
@@ -119,7 +108,8 @@ training_t_s_date <- head(train_test_t_s_date, length(train_test_t_s_date) - siz
 
 ```
 
-```{r auto.arima, include = F}
+```{r auto.arima_training, include = F}
+## Usado para selecionar o melhor modelo com a base de dados usada
 best_model <- auto.arima(training, trace=TRUE)
 p = best_model[["arma"]][1]
 d = best_model[["arma"]][3]
@@ -127,12 +117,12 @@ q = best_model[["arma"]][2]
 p
 d
 q
-best_model
+#best_model
 ```
 
 ```{r TRAIN}
 # Create Predictions using SARIMA model
-sarima(train_test, p=p, d=d, q=q)
+sarima(training, p=p, d=d, q=q)
 ```
 
 ```{r TEST, include = T}
@@ -197,7 +187,8 @@ train_test_plot <- ts(train_test)
 pred_oos <- sarima.for(train_test, n.ahead=length(out_of_sample), p=p, d=d, q=q, 0,1,1,52,  plot=F)
 
 ### AQUI DA ERRO
-oos_plot <- as.numeric(  c(pred_oos$pred)  + c(out_of_sample_t_s)  ) 
+oos_plot <- as.numeric(  c(pred_oos$pred) + c(out_of_sample_t_s) # - c(pred_oos$se)    
+                         ) 
 oos_plot_real <- as.numeric( na.omit( out_of_sample  + out_of_sample_t_s ) )
 
 
@@ -210,7 +201,6 @@ mape
 print(paste0("o 'ERRO MÉDIO' esperado é de: ",  round(mae)  ))
 
 ```
-
 
 ```{r OUT-OF-SAMPLE-PLOT, include = T}
 
@@ -246,9 +236,10 @@ hc
 
 ```
 
+
 ```{r PREVISAO, include = T}
 
-semanas <- 52
+semanas <- 16
 date_previsao = as.Date(seq.Date(max(fat$date)+7, by = 7, length.out = semanas))
 
 remainder_plot <- ts(remainder_ts)
@@ -256,10 +247,8 @@ PREVISAO_remainder <- sarima.for(remainder_ts, n.ahead=semanas, p=p, d=d, q=q, 0
 
 PREVISAO_t_s <- sarima.for(trend_season, n.ahead=semanas, p=p, d=d, q=q, 0,1,1,7,  plot=F)
 
-PREVISAO <- ts(PREVISAO_remainder$pred, frequency=52) + ts(PREVISAO_t_s$pred, frequency=52) #* 1.1
+PREVISAO <- ts(PREVISAO_remainder$pred, frequency=52) + ts(PREVISAO_t_s$pred, frequency=52) #+ ts(PREVISAO_remainder$se, frequency=52) + ts(PREVISAO_t_s$se, frequency=52) 
 
-# dates_previsão <- list_data <- seq(as.Date(max(index(remainder_ts))), 
-#                        as.Date(max(date_previsao)), by = 1)
 
 hc <- highchart(type = "chart") %>% 
   hc_title( text = paste0('PREVISÃO PRÓXIMAS ', semanas,' SEMANAS')
@@ -286,8 +275,7 @@ hc
 
 ```
 
-
-```{r, include=T}
+```{r TOTAL, include=T}
 
 total_fat <-  c(fat$valor_final_item, PREVISAO)
 
@@ -298,15 +286,22 @@ hc <- highchart(type = "chart") %>%
             , style = list( color = "#004589", fontSize = "15px") ) %>%
   hc_chart(zoomType = "x") %>%
   hc_xAxis(categories = unique(total_dates) %>% as.Date(format = "%d-%m-%y"),
-           plotLines = list(
-      list(
-        label = list(text = "Previsão"),
-        color = "#FF0000",
-        width = 1,
-        value = length(fat$date)
-        )
-      )
-           
+           plotBands = list(
+                   list(
+                     label = list(text = "Previsão"),
+                     color = "rgba(0, 100, 0, 0.2)",
+                     from = length(fat$date),
+                     to = length(fat$date)+semanas
+                     )
+                   )
+      #      , plotLines = list(
+      # list(
+      #   label = list(text = "Previsão"),
+      #   color = "#FF0000",
+      #   width = 1,
+      #   value = length(fat$date)
+      #   )
+      # )
            )  %>%
   hc_tooltip( crosshairs = TRUE, borderWidth = 3, sort = TRUE, table = TRUE, valueDecimals = 0
               , pointFormat = "<br/><span style='color:{point.color}'>\u25CF</span>{series.name}: <b> {point.y}</b>" ) %>%
