@@ -8,6 +8,8 @@ knitr::opts_chunk$set( echo = FALSE, fig.align = 'center', out.width= '100%', ou
 
 ```{r packages}
 
+setwd("C:/Users/joao.colantuono/TimeSeriesForecasting/previsao")
+
 if(!require(tseries)){install.packages("tseries",repos="http://cran-r.c3sl.ufpr.br");library(tseries)}
 if(!require(astsa)){install.packages("astsa",repos="http://cran-r.c3sl.ufpr.br");library(astsa)}
 if(!require(frequency)){install.packages("frequency",repos="http://cran-r.c3sl.ufpr.br");library(frequency)}
@@ -25,39 +27,58 @@ if(!require(dplyr)){install.packages("dplyr",repos="http://cran-r.c3sl.ufpr.br")
 load("./../dataMart/faturamento_old.Rda")
 load("./../dataMart/faturamento_new.Rda")
 
-
 faturamento_new$dta_inc_pedido <- as.character(faturamento_new$dta_inc_pedido)
 
 fat <- rbind(faturamento_old, faturamento_new)
 fat$dta_inc_pedido <- as.Date(fat$dta_inc_pedido)
 
-fat <- fat[ c(-1), ]
-
 date <- as.Date(cut(fat$dta_inc_pedido, "week"))
 fat <- aggregate(valor_final_item ~ date, fat, sum)
 fat$date <- as.Date(fat$date)
 
+fat <- fat[ c(-1), ]
+
 dates <- fat$date
 
+fat <- head(fat, ( dim(fat)[1] - 1 ))
+
 timeseries <- xts(x=fat$valor_final_item, order.by = fat$date)
-timeseries <- tail(timeseries,-1)
 
 ts <- ts( timeseries , frequency = 52) 
 decomp_ts <- decompose(ts, type = "additive" )
 plot(decomp_ts)
 
-seasonal_decomp_ts   <- decomp_ts$x 
+remainder <- decomp_ts$x
 trend_decomp_ts     <- decomp_ts$trend 
 season_decomp_ts <- decomp_ts$seasonal 
 random_decomp_ts <- decomp_ts$random
 
 trend_season <-  season_decomp_ts + (trend_decomp_ts[is.na(trend_decomp_ts)] <- 0) #+ (random_decomp_ts[is.na(random_decomp_ts)] <- 0)
 
-remainder <- decomp_ts$x
-
 dates <- tail(dates , -1)
 
 remainder_ts <- remainder
+
+```
+
+```{r Stationarity-test}
+print(adf.test(decomp_ts$x))
+print(kpss.test(decomp_ts$x))
+print(pp.test(decomp_ts$x))
+
+data <- Nile
+
+print(pp.test(data))
+
+plot(data)
+
+# summary(ur.df(fat$valor_final_item, type='none', lags=1))
+
+
+# The p-value is 0.1. Since this value is not less than .05, we fail to reject the null hypothesis of the KPSS test.
+# 
+# This means we can assume that the time series is trend stationary.
+
 
 ```
 
@@ -145,11 +166,9 @@ mae
 mape 
 print(paste0("o 'ERRO MÉDIO' esperado é de: ",  round(mae)  ))
 
-
 ```
 
 ```{r TEST_PLOT, include = T}
-
 
 hc <- highchart(type = "chart") %>% 
   hc_title( text = 'Forecast TESTING', style = list( color = "#004589", fontSize = "15px") ) %>%
@@ -180,17 +199,13 @@ hc
 
 ```
 
-
 ```{r OUT-OF-SAMPLE, include = T}
 
 train_test_plot <- ts(train_test)
 pred_oos <- sarima.for(train_test, n.ahead=length(out_of_sample), p=p, d=d, q=q, 0,1,1,52,  plot=F)
 
-### AQUI DA ERRO
-oos_plot <- as.numeric(  c(pred_oos$pred) + c(out_of_sample_t_s) # - c(pred_oos$se)    
-                         ) 
+oos_plot <- as.numeric(  c(pred_oos$pred) + c(out_of_sample_t_s) )#- c(pred_oos$se) ) 
 oos_plot_real <- as.numeric( na.omit( out_of_sample  + out_of_sample_t_s ) )
-
 
 mae <- mean(abs( oos_plot - oos_plot_real ))
 mape <- mae / mean( oos_plot_real ) * 100
@@ -232,10 +247,7 @@ hc <- highchart(type = "chart") %>%
 
 hc
 
-
-
 ```
-
 
 ```{r PREVISAO, include = T}
 
@@ -247,8 +259,13 @@ PREVISAO_remainder <- sarima.for(remainder_ts, n.ahead=semanas, p=p, d=d, q=q, 0
 
 PREVISAO_t_s <- sarima.for(trend_season, n.ahead=semanas, p=p, d=d, q=q, 0,1,1,7,  plot=F)
 
-PREVISAO <- ts(PREVISAO_remainder$pred, frequency=52) + ts(PREVISAO_t_s$pred, frequency=52) #+ ts(PREVISAO_remainder$se, frequency=52) + ts(PREVISAO_t_s$se, frequency=52) 
-
+PREVISAO <- 
+# ts(PREVISAO_remainder$pred, frequency=52) 
+ts(abs(PREVISAO_remainder$pred), frequency=52) 
+# + ts(PREVISAO_t_s$pred, frequency=52)
++ ts(abs(PREVISAO_t_s$pred), frequency=52)
+#- ts(PREVISAO_remainder$se, frequency=52) 
+#- ts(PREVISAO_t_s$se, frequency=52)  
 
 hc <- highchart(type = "chart") %>% 
   hc_title( text = paste0('PREVISÃO PRÓXIMAS ', semanas,' SEMANAS')
@@ -286,7 +303,7 @@ hc <- highchart(type = "chart") %>%
             , style = list( color = "#004589", fontSize = "15px") ) %>%
   hc_chart(zoomType = "x") %>%
   hc_xAxis(categories = unique(total_dates) %>% as.Date(format = "%d-%m-%y"),
-           plotBands = list(
+            plotBands = list(
                    list(
                      label = list(text = "Previsão"),
                      color = "rgba(0, 100, 0, 0.2)",
@@ -294,18 +311,9 @@ hc <- highchart(type = "chart") %>%
                      to = length(fat$date)+semanas
                      )
                    )
-      #      , plotLines = list(
-      # list(
-      #   label = list(text = "Previsão"),
-      #   color = "#FF0000",
-      #   width = 1,
-      #   value = length(fat$date)
-      #   )
-      # )
            )  %>%
   hc_tooltip( crosshairs = TRUE, borderWidth = 3, sort = TRUE, table = TRUE, valueDecimals = 0
               , pointFormat = "<br/><span style='color:{point.color}'>\u25CF</span>{series.name}: <b> {point.y}</b>" ) %>%
-
 
     hc_add_series(type = "line"
                 , color = "blue"
@@ -320,5 +328,16 @@ hc <- highchart(type = "chart") %>%
   hc_add_theme(hc_theme_gridlight())
 
 hc
+
+```
+
+```{r}
+
+file_name <- paste0('previsaoFaturamento_', Sys.Date())
+file_path <- paste0('./..//dataMart/',file_name,'.Rda')
+
+assign(file_name, total_fat)
+
+save(file_name, file=file_path)
 
 ```
